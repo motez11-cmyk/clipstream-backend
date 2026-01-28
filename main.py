@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# (اختياري لكن مفيد) CORS باش الواجهة تخدم بلا مشاكل
+# CORS (باش الواجهة تخدم من Netlify)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -32,13 +32,19 @@ def clip(
     out = f"/tmp/{uid}_cut.mp4"
 
     try:
-        # 1) تحميل الفيديو
+        # 1️⃣ تحميل الفيديو (best video + best audio → mp4)
         subprocess.run(
-            ["yt-dlp", "-f", "mp4", "-o", inp, url],
+            [
+                "yt-dlp",
+                "-f", "bv*+ba/b",
+                "--merge-output-format", "mp4",
+                "-o", inp,
+                url
+            ],
             check=True
         )
 
-        # 2) قص الفيديو (إعادة ترميز – مضمون)
+        # 2️⃣ قص الفيديو (إعادة ترميز – مضمون)
         subprocess.run(
             [
                 "ffmpeg",
@@ -65,11 +71,14 @@ def clip(
     except subprocess.CalledProcessError as e:
         return JSONResponse(
             status_code=500,
-            content={"error": "processing failed", "details": str(e)}
+            content={
+                "error": "processing failed",
+                "details": str(e)
+            }
         )
 
     finally:
-        # تنظيف الملفات
+        # تنظيف الملفات المؤقتة
         if os.path.exists(inp):
             os.remove(inp)
         if os.path.exists(out):
