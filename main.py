@@ -7,7 +7,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# CORS (باش الواجهة تخدم من Netlify)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -30,12 +29,26 @@ def clip(
     uid = str(uuid.uuid4())
     inp = f"/tmp/{uid}.mp4"
     out = f"/tmp/{uid}_cut.mp4"
+    cookies_path = f"/tmp/{uid}_cookies.txt"
 
     try:
-        # 1️⃣ تحميل الفيديو (best video + best audio → mp4)
+        # تحميل الكوكيز من Environment Variables
+        cookies_data = os.environ.get("YT_COOKIES")
+        if not cookies_data:
+            return JSONResponse(
+                status_code=500,
+                content={"error": "YT_COOKIES not found in environment"}
+            )
+
+        # كتابة الكوكيز في ملف مؤقت
+        with open(cookies_path, "w") as f:
+            f.write(cookies_data)
+
+        # تحميل الفيديو باستعمال yt-dlp + cookies
         subprocess.run(
             [
                 "yt-dlp",
+                "--cookies", cookies_path,
                 "-f", "bv*+ba/b",
                 "--merge-output-format", "mp4",
                 "-o", inp,
@@ -44,7 +57,7 @@ def clip(
             check=True
         )
 
-        # 2️⃣ قص الفيديو (إعادة ترميز – مضمون)
+        # قص الفيديو (إعادة ترميز مضمونة)
         subprocess.run(
             [
                 "ffmpeg",
@@ -71,15 +84,10 @@ def clip(
     except subprocess.CalledProcessError as e:
         return JSONResponse(
             status_code=500,
-            content={
-                "error": "processing failed",
-                "details": str(e)
-            }
+            content={"error": "processing failed", "details": str(e)}
         )
 
     finally:
-        # تنظيف الملفات المؤقتة
-        if os.path.exists(inp):
-            os.remove(inp)
-        if os.path.exists(out):
-            os.remove(out)
+        for f in [inp, out, cookies_path]:
+            if f and os.path.exists(f):
+                os.remove(f)
